@@ -45,7 +45,20 @@ def generate_comment(csharp_code: str = None) -> str:
 
     tokenizer = AutoTokenizer.from_pretrained(model_name)
 
-    example = """
+    sample_input_1 = """
+        private int CalculateSum(int firstNumber, int secondNumber)
+        {
+            return firstNumber + secondNumber;
+        }
+    """
+    sample_input_2 = """
+        private int GetRandomValue()
+        {
+            return rnd.Next(0, 100) + rnd.Next(0, 100);
+        }
+    """
+
+    sample_output_1 = """
         /// <summary>
         /// This method takes two integer values and returns the sum.
         /// <example>
@@ -63,10 +76,26 @@ def generate_comment(csharp_code: str = None) -> str:
         /// </returns>
     """
 
+    sample_output_2 = """
+        /// <summary>
+        /// This method generates a random integer value between 0 and 100.
+        /// <example>
+        /// For example:
+        /// <code>
+        /// int randomValue = GetRandomValue();
+        /// </code>
+        /// results in <c>randomValue</c>'s having a random value between 0 and 200.
+        /// </example>
+        /// </summary>
+        /// <returns>
+        /// An integer value being the random value generated.
+        /// </returns>
+    """
+
     prompt = "Generate the summary of the following method in C#: " \
 
     messages = [
-        {"role": "system", "content": f"You are Luke, Your job is to create summaries of C# methods, here is an example of the output you must use: {example}. Do not generate any code, only return the summary in the expected format."},
+        {"role": "system", "content": f"Your job is to create summaries of C# methods. For example, the following code: \"{sample_input_1}\" should return: \"{sample_output_1}\", while \"{sample_input_2}\" should return: \"{sample_output_2}\". Do not generate any code, do not include exceptions, only return the summary in the expected format."},
         {"role": "user", "content": f"{prompt} ```{csharp_code}```"},
     ]
     text = tokenizer.apply_chat_template(
@@ -89,6 +118,11 @@ def generate_comment(csharp_code: str = None) -> str:
     # if the last line of the response is "///</summary>", remove it
     if response.endswith("/// </summary>"):
         response = response[:-len("/// </summary>")].strip()
+    if response.endswith("///</summary>"):
+        response = response[:-len("///</summary>")].strip()
+
+    # Make sure the response only contains the summary
+    response = "\n".join([line for line in response.split("\n") if line.startswith("///")])
 
     return response
 
