@@ -265,7 +265,7 @@ if __name__ == "__main__":
     print(f"[-] Found {len(cs_files)} csharp files in {head_folder}.")
 
     # Extract methods from each file and generate comments
-    with open("error_log.txt", "w") as error_log:
+    with open("error_log.txt", "w", "utf-8") as error_log:
         error_log.write("Error log for C# method comment generation:\n")
         error_log.write("========================================\n")
         error_log.write("Errors encountered during processing:\n\n")
@@ -294,3 +294,4 @@ if __name__ == "__main__":
                 print(f"Error processing file {file_path}: {e}")
                 error_log.write(f"Error processing file {file_path}: {e}\n")
                 error_log.write("========================================\n")
+    print("[+] Finished processing all files.")
