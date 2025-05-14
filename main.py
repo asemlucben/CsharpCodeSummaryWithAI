@@ -47,16 +47,20 @@ def generate_comment(csharp_code: str = None) -> str:
 
     example = """
         /// <summary>
-        /// This method changes the point's location by the given x- and y-offsets.
+        /// This method takes two integer values and returns the sum.
         /// <example>
         /// For example:
         /// <code>
-        /// Point p = new Point(3,5);
-        /// p.Translate(-1,3);
+        /// int result = CalculateSum(5, 10);
         /// </code>
-        /// results in <c>p</c>'s having the value (2,8).
+        /// results in <c>result</c>'s having the value 15.
         /// </example>
         /// </summary>
+        /// <param name="firstNumber">The first number to sum.</param>
+        /// <param name="secondNumber">The second number to sum.</param>
+        /// <returns>
+        /// An integer value being the sum of the input values.
+        /// </returns>
     """
 
     prompt = "Generate the summary of the following method in C#: " \
@@ -81,6 +85,11 @@ def generate_comment(csharp_code: str = None) -> str:
     ]
 
     response = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
+
+    # if the last line of the response is "///</summary>", remove it
+    if response.endswith("/// </summary>"):
+        response = response[:-len("/// </summary>")].strip()
+
     return response
 
 def find_cs_files(root_folder):
@@ -186,7 +195,6 @@ if __name__ == "__main__":
         for method in methods:
             # Generate a comment for each method
             print(f" [+] Generating comment for method: {method.declaration}")
-            print(f" [+] Method body: {method.body}")
             summary = generate_comment(method.body)
             # Replace the method declaration with the generated comment
             new_declaration = summary + "\n" + method.declaration
