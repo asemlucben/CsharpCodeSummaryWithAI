@@ -13,7 +13,7 @@ class CsharpMethod:
     declaration: str
     body: str
     def __init__(self, declaration: str, body: str):
-        self.declaration = declaration.replace("[ExportMethod]", "").strip().split("\n")[0].strip()
+        self.declaration = declaration.strip().split("\n")[0].strip()
         self.body = body
 
 def list_torch_devices():
@@ -26,6 +26,41 @@ def list_torch_devices():
             print(f"Device {i}: {torch.cuda.get_device_name(i)}")
     else:
         print("CUDA is not available. Using CPU.")
+
+def validate_summary(summary: str) -> bool:
+    """
+    Validates the generated summary to ensure it contains the expected format.
+    
+    Args:
+        summary (str): The generated summary to validate.
+        
+    Returns:
+        bool: True if the summary is valid, False otherwise.
+    """
+    # Check if the summary contains the expected tags
+    if not "<summary>" in summary or not "</summary>" in summary:
+        print("[!] Summary does not contain <summary> or </summary> tags.")
+        return False
+    if "<code>" in summary and "</code>" not in summary:
+        print("[!] Summary contains <code> tag without closing </code> tag.")
+        return False
+    if "<example>" in summary and "</example>" not in summary:
+        print("[!] Summary contains <example> tag without closing </example> tag.")
+        return False
+    if "<returns>" in summary and "</returns>" not in summary:
+        print("[!] Summary contains <returns> tag without closing </returns> tag.")
+        return False
+    if "<param" in summary and "</param>" not in summary:
+        print("[!] Summary contains <param> tag without closing </param> tag.")
+        return False
+    if "<exception" in summary and "</exception>" not in summary:
+        print("[!] Summary contains <exception> tag without closing </exception> tag.")
+        return False
+    if "<example>" in summary and "</example>" not in summary:
+        print("[!] Summary contains <example> tag without closing </example> tag.")
+        return False
+    
+    return True
 
 def generate_comment(csharp_code: str = None) -> str:
     """
@@ -57,7 +92,6 @@ def generate_comment(csharp_code: str = None) -> str:
             return rnd.Next(0, 100) + rnd.Next(0, 100);
         }
     """
-
     sample_output_1 = """
         /// <summary>
         /// This method takes two integer values and returns the sum.
@@ -75,7 +109,6 @@ def generate_comment(csharp_code: str = None) -> str:
         /// An integer value being the sum of the input values.
         /// </returns>
     """
-
     sample_output_2 = """
         /// <summary>
         /// This method generates a random integer value between 0 and 100.
@@ -95,7 +128,7 @@ def generate_comment(csharp_code: str = None) -> str:
     prompt = "Generate the summary of the following method in C#: " \
 
     messages = [
-        {"role": "system", "content": f"Your job is to create summaries of C# methods. For example, the following code: \"{sample_input_1}\" should return: \"{sample_output_1}\", while \"{sample_input_2}\" should return: \"{sample_output_2}\". Do not generate any code, do not include exceptions, only return the summary in the expected format."},
+        {"role": "system", "content": f"Your job is to create summaries of C# methods. For example, the following code: \"{sample_input_1}\" should return: \"{sample_output_1}\", while \"{sample_input_2}\" should return: \"{sample_output_2}\". Do not generate any code, do not include exceptions in the summary, only return the summary in the expected format."},
         {"role": "user", "content": f"{prompt} ```{csharp_code}```"},
     ]
     text = tokenizer.apply_chat_template(
@@ -121,8 +154,14 @@ def generate_comment(csharp_code: str = None) -> str:
     if response.endswith("///</summary>"):
         response = response[:-len("///</summary>")].strip()
 
+    response = re.sub(r'/// <exception.*?</exception>', '', response, flags=re.DOTALL).strip()
+
     # Make sure the response only contains the summary
     response = "\n".join([line for line in response.split("\n") if line.startswith("///")])
+
+    # Check if the summary is valid
+    if not validate_summary(response):
+        raise ValueError("[!] Generated summary is not valid.")
 
     return response
 
@@ -169,6 +208,11 @@ def extract_methods_from_file(file_path) -> list[CsharpMethod]:
             print(f"[-] Skipping file {file_path} as it already contains summary comments.")
             return methods
 
+        content = re.sub(r'#region\s+.*?\n', '', content, flags=re.DOTALL).strip()
+        content = re.sub(r'#endregion\s+.*?\n', '', content, flags=re.DOTALL).strip()
+        content = re.sub(r'//.*?\n', '', content, flags=re.DOTALL).strip()
+        content = content.replace("[ExportMethod]", "").strip()
+
         # Improved regex that specifically targets method declarations
         # Starts with access modifiers and other method attributes
         # Ensures method name follows a return type
@@ -180,10 +224,10 @@ def extract_methods_from_file(file_path) -> list[CsharpMethod]:
             body = match.group(0).strip()
             
             # Additional filter to exclude control statements and constructors
-            if not any(keyword in declaration.split()[0].lower() for keyword in ["catch", "if", "for", "while", "foreach", "switch", "using"]):
+            if not any(keyword in declaration.split(" ")[0] for keyword in ["#region" "catch", "if", "for", "while", "foreach", "switch", "using"]):
                 # Skip properties, constructors and other non-methods
                 if not re.match(r'.*\s+get\s+[{]|.*\s+set\s+[{]|.*\boperator\b|.*\bnew\b', declaration):
-                    # Skip if the method is a default NetLogic method
+                    # Skip some specific method names
                     if not "Start()" in declaration and not "Stop()" in declaration:
                         methods.append(CsharpMethod(declaration=declaration, body=body))
     
@@ -221,17 +265,32 @@ if __name__ == "__main__":
     print(f"[-] Found {len(cs_files)} csharp files in {head_folder}.")
 
     # Extract methods from each file and generate comments
-    for file_path in cs_files:
-        # Extract methods from the file
-        print(f"[+] Processing file: {file_path}")
-        methods = extract_methods_from_file(file_path)
-        print(f"[-] Found {len(methods)} methods in {file_path}.")
-        for method in methods:
-            # Generate a comment for each method
-            print(f" [+] Generating comment for method: {method.declaration}")
-            summary = generate_comment(method.body)
-            # Replace the method declaration with the generated comment
-            new_declaration = summary + "\n" + method.declaration
-            update_method_declaration(file_path, method.declaration, new_declaration)
-            print(f" [+] Method declaration updated in {file_path}.")
-        print(f"[+] Finished processing file: {file_path}")
+    with open("error_log.txt", "w") as error_log:
+        error_log.write("Error log for C# method comment generation:\n")
+        error_log.write("========================================\n")
+        error_log.write("Errors encountered during processing:\n\n")
+        for file_path in cs_files:
+            try:
+                # Extract methods from the file
+                print(f"[+] Processing file: {file_path}")
+                methods = extract_methods_from_file(file_path)
+                print(f"[-] Found {len(methods)} methods in {file_path}.")
+                for method in methods:
+                    try:
+                        # Generate a comment for each method
+                        print(f" [+] Generating comment for method: {method.declaration}")
+                        summary = generate_comment(method.body)
+                        # Replace the method declaration with the generated comment
+                        new_declaration = summary + "\n" + method.declaration
+                        update_method_declaration(file_path, method.declaration, new_declaration)
+                        print(f" [+] Method declaration updated in {file_path}.")
+                    except Exception as e:
+                        print(f"Error generating comment for method {method.declaration}: {e}")
+                        error_log.write(f"Error generating comment for method {method.declaration}: {e}\n")
+                        error_log.write(f"File: {file_path}\n")
+                        error_log.write("========================================\n")
+                print(f"[+] Finished processing file: {file_path}")
+            except Exception as e:
+                print(f"Error processing file {file_path}: {e}")
+                error_log.write(f"Error processing file {file_path}: {e}\n")
+                error_log.write("========================================\n")
