@@ -37,7 +37,7 @@ def list_torch_devices():
     else:
         print("CUDA is not available. Using CPU.")
 
-def validate_summary(summary: str) -> bool:
+def validate_summary(summary: str) -> [bool, str]:
     """
     Validates the generated summary to ensure it contains the expected format.
     
@@ -100,21 +100,46 @@ def validate_summary(summary: str) -> bool:
         valid_summary = False
 
     if not valid_summary:
-        try:
-            with open("error_log_invalid_summaries.txt", "a", encoding="utf-8") as error_log:
-                error_log.write("========================================\n")
-                error_log.write(f"Error: {error_message}\n")
-                error_log.write(f"Invalid summary: \n{summary}\n")
-                error_log.write("========================================\n")
-        except Exception as e:
-            print(f"[!] Error writing to error log: {e}")
-        
         print(error_message)
-        return False
+        return False, error_message
 
-    return True
+    return True, ""
 
-def generate_comment(csharp_code: str = None) -> str:
+def clean_summary(response: str, is_void: bool) -> str:
+    # Remove the closing <summary> tag which is sometimes wrongly generated
+    if len(re.findall(r'/// </summary>', response)) > 1 and response.endswith("/// </summary>"):
+        response = response[:-len("/// </summary>")].strip()
+
+    # Remove exception tags
+    response = re.sub(r'/// <exception.*?</exception>', '', response, flags=re.DOTALL).strip()
+    # Remove example tags
+    response = re.sub(r'/// <example.*?</example>', '', response, flags=re.DOTALL).strip()
+    # Remove blank tags
+    response = re.sub(r'/// <.*></.*>', '', response, flags=re.DOTALL).strip()
+
+    if is_void:
+        # Remove the returns tag if the method is void
+        response = re.sub(r'/// <returns>.*?</returns>', '', response, flags=re.DOTALL).strip()
+
+    # Make sure the response only contains the summary
+    response = "\n".join([line for line in response.split("\n") if line.startswith("///")])
+
+    response = response.replace("\n\n", "\n").strip()
+
+    # If multiple </summary> tags are present, remove all but the first one
+    if len(re.findall(r'</summary>', response)) > 1:
+        # Leave only the first </summary> tag
+        split_response = response.split("/// </summary>")
+        response = split_response[0] + "\n/// </summary>"
+
+    # For some reason, the model sometimes generates another summary after the remarks tag
+    if "</remarks>" in response:
+        # Remove all text after the first </remarks> tag
+        response = response.split("</remarks>")[0] + "</remarks>"
+
+    return response
+
+def generate_comment(csharp_code: str, is_void: bool) -> str:
     """
     Generates a comment for the provided C# code using a pre-trained model.
     Args:
@@ -184,54 +209,48 @@ def generate_comment(csharp_code: str = None) -> str:
         #{"role": "system", "content": instructions},
         {"role": "user", "content": f"{instructions} {prompt} ```{csharp_code}```"},
     ]
-    text = tokenizer.apply_chat_template(
-        messages,
-        tokenize=False,
-        add_generation_prompt=True,
-        enable_thinking=False,
-    )
-    model_inputs = tokenizer([text], return_tensors="pt").to(device)  # Move inputs to the device
 
-    generated_ids = model.generate(
-        **model_inputs,
-        max_new_tokens=32768
-    )
-    generated_ids = [
-        output_ids[len(input_ids):] for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
-    ]
+    attempts = 0
 
-    response = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
+    while attempts < 3:
+        text = tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+            enable_thinking=False,
+        )
+        model_inputs = tokenizer([text], return_tensors="pt").to(device)  # Move inputs to the device
 
-    # Remove the closing <summary> tag which is sometimes wrongly generated
-    if len(re.findall(r'/// </summary>', response)) > 1 and response.endswith("/// </summary>"):
-        response = response[:-len("/// </summary>")].strip()
+        generated_ids = model.generate(
+            **model_inputs,
+            max_new_tokens=32768
+        )
+        generated_ids = [
+            output_ids[len(input_ids):] for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
+        ]
 
-    # Remove exception tags
-    response = re.sub(r'/// <exception.*?</exception>', '', response, flags=re.DOTALL).strip()
-    # Remove example tags
-    response = re.sub(r'/// <example.*?</example>', '', response, flags=re.DOTALL).strip()
-    # Remove blank tags
-    response = re.sub(r'/// <.*></.*>', '', response, flags=re.DOTALL).strip()
+        response = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
 
-    # Make sure the response only contains the summary
-    response = "\n".join([line for line in response.split("\n") if line.startswith("///")])
-
-    response = response.replace("\n\n", "\n").strip()
-
-    # If multiple </summary> tags are present, remove all but the first one
-    if len(re.findall(r'</summary>', response)) > 1:
-        # Leave only the first </summary> tag
-        split_response = response.split("/// </summary>")
-        response = split_response[0] + "\n/// </summary>"
-
-    # For some reason, the model sometimes generates another summary after the remarks tag
-    if "</remarks>" in response:
-        # Remove all text after the first </remarks> tag
-        response = response.split("</remarks>")[0] + "</remarks>"
-        
-    # Check if the summary is valid
-    if not validate_summary(response):
-        raise ValueError("[!] Generated summary is not valid.")
+        # Clean the response
+        response = clean_summary(response, is_void)
+            
+        # Check if the summary is valid
+        valid_summary, error_message = validate_summary(response)
+        if not valid_summary:
+            print(f"[!] Invalid summary generated. Attempt {attempts + 1} of 3. Error: {error_message}")
+            attempts += 1
+            if attempts == 3:
+                print("[!] Maximum attempts reached. Skipping this method.")
+                with open("error_log_invalid_summaries.txt", "a", encoding="utf-8") as error_log:
+                    error_log.write("========================================\n")
+                    error_log.write(f"Error: Invalid summary generated after 3 attempts.\n")
+                    error_log.write(f"Content: {error_message}\n")
+                    error_log.write(f"Invalid summary: \n{response}\n")
+                    error_log.write("========================================\n")
+        else:
+            attempts = True
+            print("[+] Generated summary is valid.")
+            break
 
     return response.strip()
 
@@ -365,7 +384,8 @@ if __name__ == "__main__":
                     try:
                         # Generate a comment for each method
                         print(f" [+] Generating comment for method: {method.declaration}")
-                        summary = generate_comment(method.body)
+                        is_void = " void " in method.declaration
+                        summary = generate_comment(method.body, is_void)
                         # Replace the method declaration with the generated comment
                         new_body = summary + "\n" + method.body
                         update_method_declaration(file_path, method.body, new_body)

@@ -13,6 +13,9 @@ A Python tool that automatically generates documentation comments for C# methods
 
 This tool scans C# files in a specified directory, extracts method definitions, and uses an AI model to generate comprehensive XML documentation comments that follow C# documentation standards. The generated summaries include method descriptions, parameter details, and return value information.
 
+> [!NOTE]
+> A good portion of the `cleanup_summary` routine is needed as the AI model, which was somehow halucinating with some repetitive patterns, was not able to produce the desired results. The cleanup routine is needed to remove those repetitive patterns and to make the summary more readable.
+
 ## Features
 
 - Recursively processes all .cs files in a specified directory
@@ -57,6 +60,7 @@ python main.py
 ```
 
 The script will:
+
 1. Check for CUDA availability
 2. Find all .cs files in the specified directory
 3. Extract methods from each file
