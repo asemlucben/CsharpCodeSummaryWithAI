@@ -52,25 +52,25 @@ def validate_summary(summary: str) -> tuple[bool, str]:
 
     # Check if the summary contains the expected tags
     if not "<summary>" in summary or not "</summary>" in summary:
-        error_message = "[!] Summary does not contain <summary> or </summary> tags.\n"
+        error_message = "[!] Summary does not contain <summary> or </summary> tags."
         valid_summary = False
     if "<code>" in summary and "</code>" not in summary:
-        error_message = "[!] Summary contains <code> tag without closing </code> tag.\n"
+        error_message = "[!] Summary contains <code> tag without closing </code> tag."
         valid_summary = False
     if "<example>" in summary and "</example>" not in summary:
-        error_message = "[!] Summary contains <example> tag without closing </example> tag.\n"
+        error_message = "[!] Summary contains <example> tag without closing </example> tag."
         valid_summary = False
     if "<returns>" in summary and "</returns>" not in summary:
-        error_message = "[!] Summary contains <returns> tag without closing </returns> tag.\n"
+        error_message = "[!] Summary contains <returns> tag without closing </returns> tag."
         valid_summary = False
     if "<param" in summary and "</param>" not in summary:
-        error_message = "[!] Summary contains <param> tag without closing </param> tag.\n"
+        error_message = "[!] Summary contains <param> tag without closing </param> tag."
         valid_summary = False
     if "<exception" in summary and "</exception>" not in summary:
-        error_message = "[!] Summary contains <exception> tag without closing </exception> tag.\n"
+        error_message = "[!] Summary contains <exception> tag without closing </exception> tag."
         valid_summary = False
     if "<example>" in summary and "</example>" not in summary:
-        error_message = "[!] Summary contains <example> tag without closing </example> tag.\n"
+        error_message = "[!] Summary contains <example> tag without closing </example> tag."
         valid_summary = False
     
     # Count if the number of opened <param> tags is equal to the number of closed </param> tags
@@ -80,23 +80,23 @@ def validate_summary(summary: str) -> tuple[bool, str]:
     # Count the number of closed </param> tags
     closed_tags = re.findall(r'</[a-zA-Z]+>', summary)
     if len(opened_tags) != len(closed_tags):
-        error_message = "[!] Summary contains an unequal number of opened and closed tags.\n"
+        error_message = "[!] Summary contains an unequal number of opened and closed tags."
         valid_summary = False
 
     # Count if too many <summary> tags are present
     summary_tags = re.findall(r'<summary>', summary)
     if len(summary_tags) > 1:
-        error_message = "[!] Summary contains more than one <summary> tag.\n"
+        error_message = "[!] Summary contains more than one <summary> tag."
         valid_summary = False
     # Count if too many <returns> tags are present
     returns_tags = re.findall(r'<returns>', summary)
     if len(returns_tags) > 1:
-        error_message = "[!] Summary contains more than one <returns> tag.\n"
+        error_message = "[!] Summary contains more than one <returns> tag."
         valid_summary = False
     # Count if too many <remarks> tags are present
     remarks_tags = re.findall(r'<remarks>', summary)
     if len(remarks_tags) > 1:
-        error_message = "[!] Summary contains more than one <remarks> tag.\n"
+        error_message = "[!] Summary contains more than one <remarks> tag."
         valid_summary = False
 
     if not valid_summary:
@@ -325,16 +325,22 @@ def extract_methods_from_file(file_path) -> list[CsharpMethod]:
             if process:
                 # Skip properties, constructors and other non-methods
                 if not re.match(r'.*\s+get\s+[{]|.*\s+set\s+[{]|.*\boperator\b|.*\bnew\b', declaration):
+
                     # Skip some specific method names
-                    if not "Start()" in declaration and not "Stop()" in declaration:
-                        methods.append(CsharpMethod(declaration=declaration, body=body))
+                    if "Start()" in declaration and body.count("\n") < 5:
+                        print(f"[-] Skipping Start() method in {file_path}.")
+                        continue
+                    if "Stop()" in declaration and body.count("\n") < 5:
+                        print(f"[-] Skipping Stop() method in {file_path}.")
+                        continue
+                    methods.append(CsharpMethod(declaration=declaration, body=body))
     
     except Exception as e:
         print(f"Error processing file {file_path}: {e}")
     
     return methods
 
-def update_method_declaration(file_path: str, original_declaration: str, new_declaration: str):
+def update_method_declaration(file_path: str, csharp_class: CsharpMethod, summary: str):
     """
     Updates the method declaration with a new one.
     
@@ -346,8 +352,16 @@ def update_method_declaration(file_path: str, original_declaration: str, new_dec
     try:
         with open(file_path, 'r', encoding='utf-8') as file:
             content = file.read()
-        # Replace the original declaration with the new one
-        updated_content = content.replace(original_declaration, new_declaration)
+        # Check how many occurrences of the method declaration are present
+        occurrences = content.count(csharp_class.declaration)
+        if occurrences > 1:
+            print(f"[!] Multiple occurrences of the method declaration found in {file_path}. Using full body to update.")
+            # Replace the original declaration with the new one
+            updated_content = content.replace(csharp_class.body, f"{summary}\n{csharp_class.body}", 1)
+        else:
+            # Replace the original declaration with the new one
+            updated_content = content.replace(csharp_class.declaration, f"{summary}\n{csharp_class.declaration}", 1)
+        # Write the updated content back to the file
         with open(file_path, 'w', encoding='utf-8') as file:
             file.write(updated_content)
     except Exception as e:
@@ -386,9 +400,7 @@ if __name__ == "__main__":
                         print(f" [+] Generating comment for method: {method.declaration}")
                         is_void = " void " in method.declaration
                         summary = generate_comment(method.body, is_void)
-                        # Replace the method declaration with the generated comment
-                        new_body = summary + "\n" + method.body
-                        update_method_declaration(file_path, method.body, new_body)
+                        update_method_declaration(file_path, method, summary)
                         print(f" [+] Method declaration updated in {file_path}.")
                     except Exception as e:
                         print(f"[!] Error generating comment for method {method.declaration}: {e}")
