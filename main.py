@@ -5,7 +5,17 @@ import re
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-model_name = "Qwen/Qwen2.5-1.5B-Instruct"
+# Working but halucinating a little (takes ~3GB of GPU)
+#model_name = "Qwen/Qwen2.5-1.5B-Instruct"
+
+# Halucinating less than the 1.5B model (takes ~3.8GB of GPU)
+# But sometimes generates double </summary> tags
+model_name = "Qwen/Qwen3-1.7B" # https://huggingface.co/Qwen/Qwen3-1.7B
+
+# model_name = "Qwen/Qwen2.5-VL-3B-Instruct" # https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct
+
+# Too big for my 4GB GPU
+# model_name = "Qwen/Qwen3-4B" # https://huggingface.co/Qwen/Qwen3-4B
 
 methods_list: list[str] = []
 
@@ -66,7 +76,7 @@ def validate_summary(summary: str) -> bool:
     # Count if the number of opened <param> tags is equal to the number of closed </param> tags
     opened_tags = re.findall(r'<[a-zA-Z]+.*>', summary)
     # Remove the inline tags from the opened tags
-    opened_tags = [tag for tag in opened_tags if not re.search(r'<[a-zA-Z]+.*?/>', tag)]
+    opened_tags = [tag for tag in opened_tags if not re.search(r'<see\s.*?/>', tag)]
     # Count the number of closed </param> tags
     closed_tags = re.findall(r'</[a-zA-Z]+>', summary)
     if len(opened_tags) != len(closed_tags):
@@ -167,22 +177,24 @@ def generate_comment(csharp_code: str = None) -> str:
         /// </returns>
     """
 
+    instructions = f"Your job is to create summaries of C# methods. For example, the following code: \"{sample_input_1}\" should return: \"{sample_output_1}\", while \"{sample_input_2}\" should return: \"{sample_output_2}\"."
     prompt = "Generate the summary of the following method in C#: " \
 
     messages = [
-        {"role": "system", "content": f"Your job is to create summaries of C# methods. For example, the following code: \"{sample_input_1}\" should return: \"{sample_output_1}\", while \"{sample_input_2}\" should return: \"{sample_output_2}\". Do not generate any code, do not include exceptions in the summary, only return the summary in the expected format."},
-        {"role": "user", "content": f"{prompt} ```{csharp_code}```"},
+        #{"role": "system", "content": instructions},
+        {"role": "user", "content": f"{instructions} {prompt} ```{csharp_code}```"},
     ]
     text = tokenizer.apply_chat_template(
         messages,
         tokenize=False,
-        add_generation_prompt=True
+        add_generation_prompt=True,
+        enable_thinking=False,
     )
     model_inputs = tokenizer([text], return_tensors="pt").to(device)  # Move inputs to the device
 
     generated_ids = model.generate(
         **model_inputs,
-        max_new_tokens=512
+        max_new_tokens=32768
     )
     generated_ids = [
         output_ids[len(input_ids):] for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
@@ -203,6 +215,14 @@ def generate_comment(csharp_code: str = None) -> str:
 
     # Make sure the response only contains the summary
     response = "\n".join([line for line in response.split("\n") if line.startswith("///")])
+
+    response = response.replace("\n\n", "\n").strip()
+
+    # If multiple </summary> tags are present, remove all but the first one
+    if len(re.findall(r'</summary>', response)) > 1:
+        # Leave only the first </summary> tag
+        split_response = response.split("/// </summary>")
+        response = split_response[0] + "\n/// </summary>"
 
     # For some reason, the model sometimes generates another summary after the remarks tag
     if "</remarks>" in response:
