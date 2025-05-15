@@ -3,12 +3,9 @@
 import os
 import re
 import torch
-from dotenv import load_dotenv
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-#model_name = "Qwen/Qwen2.5-1.5B-Instruct"
-model_name = "meta-llama/CodeLlama-7b-hf"
-HF_TOKEN = ""
+model_name = "Qwen/Qwen2.5-1.5B-Instruct"
 
 methods_list: list[str] = []
 
@@ -18,21 +15,6 @@ class CsharpMethod:
     def __init__(self, declaration: str, body: str):
         self.declaration = declaration.strip().split("\n")[0].strip()
         self.body = body
-
-def load_env():
-    """Loads environment variables from a .env file."""
-    global HF_TOKEN
-    try:
-        load_dotenv()
-        print("[-] Environment variables loaded successfully.")
-    except Exception as e:
-        print(f"[!] Error loading environment variables: {e}")
-    HF_TOKEN = os.getenv("HF_TOKEN")
-    if HF_TOKEN is None:
-        print("[!] HF_TOKEN not found in environment variables. Please set it in the .env file.")
-        raise ValueError("[!] HF_TOKEN not found in environment variables.")
-    else:
-        print("[-] HF_TOKEN loaded successfully.")
 
 def list_torch_devices():
     """Lists all available PyTorch devices."""
@@ -129,19 +111,16 @@ def generate_comment(csharp_code: str = None) -> str:
         csharp_code (str): The C# code for which to generate a comment.
     """
 
-    global HF_TOKEN, model_name
-
     # Check if CUDA is available and set the device accordingly
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
         torch_dtype="auto",
-        device_map=device,  # Use the determined device,
-        token=HF_TOKEN
+        device_map=device  # Use the determined device
     ).to(device)  # Move the model to the device
 
-    tokenizer = AutoTokenizer.from_pretrained(model_name, token=HF_TOKEN)
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
 
     sample_input_1 = """
         private int CalculateSum(int firstNumber, int secondNumber)
@@ -336,9 +315,6 @@ def update_method_declaration(file_path: str, original_declaration: str, new_dec
         print(f"Error updating file {file_path}: {e}")    
 
 if __name__ == "__main__":
-    # Load environment variables
-    load_env()
-
     # Check for CUDA
     list_torch_devices()
 
