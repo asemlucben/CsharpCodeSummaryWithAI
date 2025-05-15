@@ -297,10 +297,10 @@ def extract_methods_from_file(file_path) -> list[CsharpMethod]:
             print(f"[-] Skipping file {file_path} as it already contains summary comments.")
             return methods
 
-        content = re.sub(r'#region\s+.*?\n', '', content, flags=re.DOTALL).strip()
-        content = re.sub(r'#endregion\s+.*?\n', '', content, flags=re.DOTALL).strip()
-        content = re.sub(r'//.*?\n', '', content, flags=re.DOTALL).strip()
-        content = content.replace("[ExportMethod]", "").strip()
+        content = re.sub(r'#region\s+.*?\n', '\n', content, flags=re.DOTALL).strip()
+        content = re.sub(r'#endregion\s+.*?\n', '\n', content, flags=re.DOTALL).strip()
+        content = re.sub(r'//.*?\n', '\n', content, flags=re.DOTALL).strip()
+        content = content.replace("[ExportMethod]", "\n").strip()
 
         # Starts with access modifiers and other method attributes
         method_pattern = r'((?:public|private|protected|internal|static|virtual|override|abstract|async|extern|\s)+\s+[\w\<\>\[\],\s\.]+\s+([A-Z][\w]+|\w+)\s*\([^)]*\)(?:\s*:\s*[^{]+)?\s*)({[^{}]*(?:{[^{}]*(?:{[^{}]*}[^{}]*)*}[^{}]*)*})'
