@@ -37,29 +37,71 @@ def validate_summary(summary: str) -> bool:
     Returns:
         bool: True if the summary is valid, False otherwise.
     """
+    error_message = ""
+    valid_summary = True
+
     # Check if the summary contains the expected tags
     if not "<summary>" in summary or not "</summary>" in summary:
-        print("[!] Summary does not contain <summary> or </summary> tags.")
-        return False
+        error_message = "[!] Summary does not contain <summary> or </summary> tags.\n"
+        valid_summary = False
     if "<code>" in summary and "</code>" not in summary:
-        print("[!] Summary contains <code> tag without closing </code> tag.")
-        return False
+        error_message = "[!] Summary contains <code> tag without closing </code> tag.\n"
+        valid_summary = False
     if "<example>" in summary and "</example>" not in summary:
-        print("[!] Summary contains <example> tag without closing </example> tag.")
-        return False
+        error_message = "[!] Summary contains <example> tag without closing </example> tag.\n"
+        valid_summary = False
     if "<returns>" in summary and "</returns>" not in summary:
-        print("[!] Summary contains <returns> tag without closing </returns> tag.")
-        return False
+        error_message = "[!] Summary contains <returns> tag without closing </returns> tag.\n"
+        valid_summary = False
     if "<param" in summary and "</param>" not in summary:
-        print("[!] Summary contains <param> tag without closing </param> tag.")
-        return False
+        error_message = "[!] Summary contains <param> tag without closing </param> tag.\n"
+        valid_summary = False
     if "<exception" in summary and "</exception>" not in summary:
-        print("[!] Summary contains <exception> tag without closing </exception> tag.")
-        return False
+        error_message = "[!] Summary contains <exception> tag without closing </exception> tag.\n"
+        valid_summary = False
     if "<example>" in summary and "</example>" not in summary:
-        print("[!] Summary contains <example> tag without closing </example> tag.")
-        return False
+        error_message = "[!] Summary contains <example> tag without closing </example> tag.\n"
+        valid_summary = False
     
+    # Count if the number of opened <param> tags is equal to the number of closed </param> tags
+    opened_tags = re.findall(r'<[a-zA-Z]+.*>', summary)
+    # Remove the inline tags from the opened tags
+    opened_tags = [tag for tag in opened_tags if not re.search(r'<[a-zA-Z]+.*?/>', tag)]
+    # Count the number of closed </param> tags
+    closed_tags = re.findall(r'</[a-zA-Z]+>', summary)
+    if len(opened_tags) != len(closed_tags):
+        error_message = "[!] Summary contains an unequal number of opened and closed tags.\n"
+        valid_summary = False
+
+    # Count if too many <summary> tags are present
+    summary_tags = re.findall(r'<summary>', summary)
+    if len(summary_tags) > 1:
+        error_message = "[!] Summary contains more than one <summary> tag.\n"
+        valid_summary = False
+    # Count if too many <returns> tags are present
+    returns_tags = re.findall(r'<returns>', summary)
+    if len(returns_tags) > 1:
+        error_message = "[!] Summary contains more than one <returns> tag.\n"
+        valid_summary = False
+    # Count if too many <remarks> tags are present
+    remarks_tags = re.findall(r'<remarks>', summary)
+    if len(remarks_tags) > 1:
+        error_message = "[!] Summary contains more than one <remarks> tag.\n"
+        valid_summary = False
+
+    if not valid_summary:
+        try:
+            with open("error_log_invalid_summaries.txt", "a", encoding="utf-8") as error_log:
+                error_log.write("========================================\n")
+                error_log.write(f"Error: {error_message}\n")
+                error_log.write(f"Invalid summary: \n{summary}\n")
+                error_log.write("========================================\n")
+        except Exception as e:
+            print(f"[!] Error writing to error log: {e}")
+        
+        print(error_message)
+        return False
+
     return True
 
 def generate_comment(csharp_code: str = None) -> str:
@@ -148,22 +190,30 @@ def generate_comment(csharp_code: str = None) -> str:
 
     response = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
 
-    # if the last line of the response is "///</summary>", remove it
-    if response.endswith("/// </summary>"):
+    # Remove the closing <summary> tag which is sometimes wrongly generated
+    if len(re.findall(r'/// </summary>', response)) > 1 and response.endswith("/// </summary>"):
         response = response[:-len("/// </summary>")].strip()
-    if response.endswith("///</summary>"):
-        response = response[:-len("///</summary>")].strip()
 
+    # Remove exception tags
     response = re.sub(r'/// <exception.*?</exception>', '', response, flags=re.DOTALL).strip()
+    # Remove example tags
+    response = re.sub(r'/// <example.*?</example>', '', response, flags=re.DOTALL).strip()
+    # Remove blank tags
+    response = re.sub(r'/// <.*></.*>', '', response, flags=re.DOTALL).strip()
 
     # Make sure the response only contains the summary
     response = "\n".join([line for line in response.split("\n") if line.startswith("///")])
 
+    # For some reason, the model sometimes generates another summary after the remarks tag
+    if "</remarks>" in response:
+        # Remove all text after the first </remarks> tag
+        response = response.split("</remarks>")[0] + "</remarks>"
+        
     # Check if the summary is valid
     if not validate_summary(response):
         raise ValueError("[!] Generated summary is not valid.")
 
-    return response
+    return response.strip()
 
 def find_cs_files(root_folder):
     """
@@ -213,10 +263,7 @@ def extract_methods_from_file(file_path) -> list[CsharpMethod]:
         content = re.sub(r'//.*?\n', '', content, flags=re.DOTALL).strip()
         content = content.replace("[ExportMethod]", "").strip()
 
-        # Improved regex that specifically targets method declarations
         # Starts with access modifiers and other method attributes
-        # Ensures method name follows a return type
-        # Prevents matching control structures like "if", "while", etc.
         method_pattern = r'((?:public|private|protected|internal|static|virtual|override|abstract|async|extern|\s)+\s+[\w\<\>\[\],\s\.]+\s+([A-Z][\w]+|\w+)\s*\([^)]*\)(?:\s*:\s*[^{]+)?\s*)({[^{}]*(?:{[^{}]*(?:{[^{}]*}[^{}]*)*}[^{}]*)*})'
         
         for match in re.finditer(method_pattern, content, re.DOTALL):
@@ -224,7 +271,19 @@ def extract_methods_from_file(file_path) -> list[CsharpMethod]:
             body = match.group(0).strip()
             
             # Additional filter to exclude control statements and constructors
-            if not any(keyword in declaration.split(" ")[0] for keyword in ["#region" "catch", "if", "for", "while", "foreach", "switch", "using"]):
+            restricted_keywords = [
+                "if", "for", "while", "foreach", "switch", "using", "try", "catch",
+                "new", "get ", "set ", "#region", "#endregion", "else", "return", "throw",
+                "break", "continue", "goto", "default", "lock", "checked", "unchecked"
+            ]
+
+            process = True
+            for keyword in restricted_keywords:
+                if declaration.startswith(keyword):
+                    process = False
+                    break
+            
+            if process:
                 # Skip properties, constructors and other non-methods
                 if not re.match(r'.*\s+get\s+[{]|.*\s+set\s+[{]|.*\boperator\b|.*\bnew\b', declaration):
                     # Skip some specific method names
@@ -259,6 +318,11 @@ if __name__ == "__main__":
     # Check for CUDA
     list_torch_devices()
 
+    # Remove the invalid summaries file if it exists
+    if os.path.exists("error_log_invalid_summaries.txt"):
+        os.remove("error_log_invalid_summaries.txt")
+        print("[-] Removed the invalid summaries file.")
+
     # Get all .cs files in the current directory
     head_folder = "D:\\dev\\Vista\\src\\IDEFiles\\Libraries"
     cs_files = find_cs_files(head_folder)
@@ -273,16 +337,18 @@ if __name__ == "__main__":
             try:
                 # Extract methods from the file
                 print(f"[+] Processing file: {file_path}")
-                methods = extract_methods_from_file(file_path)
-                print(f"[-] Found {len(methods)} methods in {file_path}.")
-                for method in methods:
+                methods_to_update = extract_methods_from_file(file_path)
+                print(f"[-] Found {len(methods_to_update)} methods in {file_path}.")
+                if (len(methods_to_update) == 0):
+                    continue
+                for method in methods_to_update:
                     try:
                         # Generate a comment for each method
                         print(f" [+] Generating comment for method: {method.declaration}")
                         summary = generate_comment(method.body)
                         # Replace the method declaration with the generated comment
-                        new_declaration = summary + "\n" + method.declaration
-                        update_method_declaration(file_path, method.declaration, new_declaration)
+                        new_body = summary + "\n" + method.body
+                        update_method_declaration(file_path, method.body, new_body)
                         print(f" [+] Method declaration updated in {file_path}.")
                     except Exception as e:
                         print(f"[!] Error generating comment for method {method.declaration}: {e}")

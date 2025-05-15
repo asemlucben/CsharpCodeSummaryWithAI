@@ -1,2 +1,3 @@
 venv/*
-error_log.txt
+*.txt
+!requirements.txt
