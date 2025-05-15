@@ -2,6 +2,13 @@
 
 A Python tool that automatically generates documentation comments for C# methods using the Qwen2.5-1.5B-Instruct AI model.
 
+> [!IMPORTANT]
+> This project was done solely to save me a little of time and effort in writing documentation comments for C# methods. It is not intended to replace human developers or to be used in production code without thorough review.
+> Always review and test the generated documentation before using it in your projects.
+> The AI-generated comments may not always be accurate or complete, and should be treated as a starting point for further refinement.
+> The project is not affiliated with or endorsed by any specific AI model or library, and is intended for educational and research purposes only.
+> The AI model used in this project is a large language model that has been trained on a diverse range of text, but it may not always produce the desired results. Use at your own risk.
+
 ## Overview
 
 This tool scans C# files in a specified directory, extracts method definitions, and uses an AI model to generate comprehensive XML documentation comments that follow C# documentation standards. The generated summaries include method descriptions, parameter details, and return value information.
