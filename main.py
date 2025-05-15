@@ -37,7 +37,7 @@ def list_torch_devices():
     else:
         print("CUDA is not available. Using CPU.")
 
-def validate_summary(summary: str) -> [bool, str]:
+def validate_summary(summary: str) -> tuple[bool, str]:
     """
     Validates the generated summary to ensure it contains the expected format.
     
