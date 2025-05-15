@@ -250,10 +250,10 @@ def generate_comment(csharp_code: str, is_void: bool) -> str:
         # Check if the summary is valid
         valid_summary, error_message = validate_summary(response)
         if not valid_summary:
-            print(f"[!] Invalid summary generated. Attempt {attempts + 1} of 3. Error: {error_message}")
+            print(f"  [!] Invalid summary generated. Attempt {attempts + 1} of 3. Error: {error_message}")
             attempts += 1
             if attempts == 3:
-                print("[!] Maximum attempts reached. Skipping this method.")
+                print("  [!] Maximum attempts reached. Skipping this method.")
                 with open("error_log_invalid_summaries.txt", "a", encoding="utf-8") as error_log:
                     error_log.write("========================================\n")
                     error_log.write(f"Error: Invalid summary generated after 3 attempts.\n")
@@ -262,7 +262,7 @@ def generate_comment(csharp_code: str, is_void: bool) -> str:
                     error_log.write("========================================\n")
         else:
             attempts = True
-            print("[+] Generated summary is valid.")
+            print("  [+] Generated summary is valid.")
             break
 
     return response.strip()
@@ -368,7 +368,7 @@ def update_method_declaration(file_path: str, csharp_class: CsharpMethod, summar
         # Check how many occurrences of the method declaration are present
         occurrences = content.count(csharp_class.declaration)
         if occurrences > 1:
-            print(f"[!] Multiple occurrences of the method declaration found in {file_path}. Using full body to update.")
+            print(f" [!] Multiple occurrences of the method declaration found in {file_path}. Using full body to update.")
             # Replace the original declaration with the new one
             updated_content = content.replace(csharp_class.body, f"{summary}\n{csharp_class.body}", 1)
         else:
