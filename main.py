@@ -19,6 +19,10 @@ model_name = "Qwen/Qwen3-1.7B" # https://huggingface.co/Qwen/Qwen3-1.7B
 
 methods_list: list[str] = []
 
+tokenizer = None
+model = None
+device = None
+
 class CsharpMethod:
     declaration: str
     body: str
@@ -139,13 +143,13 @@ def clean_summary(response: str, is_void: bool) -> str:
 
     return response
 
-def generate_comment(csharp_code: str, is_void: bool) -> str:
+def init_model():
     """
-    Generates a comment for the provided C# code using a pre-trained model.
-    Args:
-        csharp_code (str): The C# code for which to generate a comment.
+    Initializes the model and tokenizer for comment generation.
     """
 
+    global tokenizer, model, device
+    
     # Check if CUDA is available and set the device accordingly
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -156,6 +160,15 @@ def generate_comment(csharp_code: str, is_void: bool) -> str:
     ).to(device)  # Move the model to the device
 
     tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+def generate_comment(csharp_code: str, is_void: bool) -> str:
+    """
+    Generates a comment for the provided C# code using a pre-trained model.
+    Args:
+        csharp_code (str): The C# code for which to generate a comment.
+    """
+
+    global tokenizer, model, device
 
     sample_input_1 = """
         private int CalculateSum(int firstNumber, int secondNumber)
@@ -370,6 +383,10 @@ def update_method_declaration(file_path: str, csharp_class: CsharpMethod, summar
 if __name__ == "__main__":
     # Check for CUDA
     list_torch_devices()
+
+    # Initialize the model
+    init_model()
+    print(f"[-] Model {model_name} loaded.")
 
     # Remove the invalid summaries file if it exists
     if os.path.exists("error_log_invalid_summaries.txt"):
