@@ -396,25 +396,31 @@ if __name__ == "__main__":
     # Get all .cs files in the current directory
     head_folder = "D:\\dev\\Vista\\src\\IDEFiles\\Libraries"
     cs_files = find_cs_files(head_folder)
-    print(f"[-] Found {len(cs_files)} csharp files in {head_folder}.")
+    files_count = len(cs_files)
+    print(f"[-] Found {files_count} csharp files in {head_folder}.")
 
     # Extract methods from each file and generate comments
     with open("error_log.txt", "w", encoding="utf-8") as error_log:
         error_log.write("Error log for C# method comment generation:\n")
         error_log.write("========================================\n")
         error_log.write("Errors encountered during processing:\n\n")
+        files_index = 0
         for file_path in cs_files:
+            files_index += 1
+            print(f"[-] Processing file {files_index} of {files_count}: {file_path}")
             try:
                 # Extract methods from the file
-                print(f"[+] Processing file: {file_path}")
                 methods_to_update = extract_methods_from_file(file_path)
-                print(f"[-] Found {len(methods_to_update)} methods in {file_path}.")
+                methods_count = len(methods_to_update)
+                print(f"[-] Found {methods_count} methods in {file_path}.")
                 if (len(methods_to_update) == 0):
                     continue
+                methods_index = 0
                 for method in methods_to_update:
                     try:
+                        methods_index += 1
                         # Generate a comment for each method
-                        print(f" [+] Generating comment for method: {method.declaration}")
+                        print(f" [+] ({methods_index}/{methods_count}) Generating comment for method: {method.declaration}")
                         is_void = " void " in method.declaration
                         summary = generate_comment(method.body, is_void)
                         update_method_declaration(file_path, method, summary)
